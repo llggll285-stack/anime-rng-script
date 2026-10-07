@@ -1,9 +1,6 @@
--- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Stealth & Human-like Edition)
--- Slides to every Centipede, hits it with randomized intervals, dodges debris, auto-unstucks,
--- takes human-like rest breaks every 20 runs, and strictly guards against wrong places.
-
+-- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Max Difficulty, Stealth & Auto-Reset Edition)
 local CONFIG = {
-    ATTACK_INTERVAL   = 0.12,  -- base seconds between sword hits (will be randomized slightly)
+    ATTACK_INTERVAL   = 0.12,  -- base seconds between sword hits (randomized slightly)
     MOVE_SPEED        = 120,   -- studs per second when sliding to a Centipede
     DODGE_SPEED       = 200,   -- studs per second when leaving a debris zone
     STAND_DISTANCE    = 4,     -- how close to stand to the Centipede
@@ -17,7 +14,7 @@ local CONFIG = {
 
     AUTO_ENTER        = true,        -- in the main game: create the raid party and start it
     RAID_NAME         = "11th Ward", -- Tree Hideout
-    DIFFICULTY        = "Hard",      -- locked to Hard
+    DIFFICULTY        = "Nightmare", -- ระดับยากสุด (สามารถเปลี่ยนเป็น Extreme หรือ Expert ตามเกมได้ครับ)
     ENTER_DELAY       = 8,           -- seconds to wait in the main game before entering
     SCRIPT_URL        = "https://raw.githubusercontent.com/ZeroVector404/Defeat-Anime-RNG/refs/heads/main/CentipedeRaid.lua",
 }
@@ -35,7 +32,6 @@ if env.__CentipedeRaid then
     pcall(env.__CentipedeRaid.stop)
 end
 
--- ---------------------------------------------------------------- place guard & strict wrong place handler
 local MAIN_PLACE = 92606991708989
 local RAID_PLACE = 134342669880221
 
@@ -44,12 +40,20 @@ if queueTeleport and CONFIG.SCRIPT_URL ~= "" then
     pcall(queueTeleport, string.format('loadstring(game:HttpGet("%s"))()', CONFIG.SCRIPT_URL))
 end
 
+-- ---------------------------------------------------------------- wrong place & auto-reset handler
 if game.PlaceId ~= RAID_PLACE then
+    -- ถ้าหลุดไปโผล่ที่หอคอยหรือแมพอื่นที่ไม่ใช่หน้าหลัก ให้รีเซ็ตตัวละครเพื่อออกทันที
     if game.PlaceId ~= MAIN_PLACE then
-        print("[CentipedeRaid] Wrong place detected (PlaceId: " .. tostring(game.PlaceId) .. "), forcing teleport back to Main Game...")
-        for _ = 1, 20 do
+        print("[CentipedeRaid] Stuck in lobby/tower, auto-resetting character to escape...")
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.Health = 0 -- สั่งตายเพื่อเด้งออกหอคอย
+        end
+        task.wait(3)
+        for _ = 1, 10 do
             pcall(TeleportService.Teleport, TeleportService, MAIN_PLACE, LocalPlayer)
-            task.wait(5)
+            task.wait(3)
         end
         return
     end
@@ -63,14 +67,14 @@ if game.PlaceId ~= RAID_PLACE then
 
     for _ = 1, 60 do
         pcall(party.InvokeServer, party, "Create", CONFIG.RAID_NAME, CONFIG.DIFFICULTY)
-        task.wait(1 + math.random() * 0.5) -- สุ่มหน่วงเวลาสร้างปาร์ตี้เล็กน้อย
+        task.wait(1 + math.random() * 0.5)
         local ok2, started, why = pcall(party.InvokeServer, party, "Start")
         if ok2 and started then
             print("[CentipedeRaid] raid started, entering...")
             return
         end
         if why == "PrestigeRequired" then
-            warn("[CentipedeRaid] this account needs the Gold I prestige rank to enter the raid")
+            warn("[CentipedeRaid] this account needs the required prestige rank to enter the raid")
             return
         end
         task.wait(5)
@@ -237,7 +241,6 @@ local function step(dt)
 
     local here = hrp.Position
 
-    -- [Anti-Stuck Mechanism]
     if (flat(here) - flat(lastPos)).Magnitude < 0.5 then
         stuckTime += dt
         if stuckTime > 2.5 then
@@ -294,8 +297,6 @@ local function step(dt)
 
     ensureWeapon(char, hum)
     local now = os.clock()
-    
-    -- [Stealth Update] สุ่มหน่วงเวลาโจมตีเลียนแบบคนจริง (แกว่งช่วง 0.11 - 0.16 วินาที)
     local randomInterval = CONFIG.ATTACK_INTERVAL + (math.random() * 0.04)
     if now - lastAttack >= randomInterval then
         lastAttack = now
@@ -342,7 +343,7 @@ if lobbyEvent and readyEvent then
         if info.SelfReady == true then return end
         local char = LocalPlayer.Character
         if not (char and char:FindFirstChild("HumanoidRootPart")) then return end
-        if os.clock() - lobbySeenAt < (CONFIG.READY_DELAY + math.random() * 1.5) then return end -- สุ่มหน่วงเวลาพร้อมรบ
+        if os.clock() - lobbySeenAt < (CONFIG.READY_DELAY + math.random() * 1.5) then return end
         if os.clock() - lastReady < 3 then return end
         lastReady = os.clock()
         readyEvent:FireServer()
@@ -358,7 +359,6 @@ if statusEvent then
             table.clear(dangerZones)
         elseif info.Kind == "Victory" then
             stats.wins += 1
-            -- [Stealth Update] ทุกๆ ครบ 20 รอบ แอบสุ่มพักเบรกชั่วคราว 5-10 วินาที ป้องกันเซิร์ฟเวอร์จับพฤติกรรมบอท
             if stats.runs % 20 == 0 then
                 status = "Taking a short natural break..."
                 task.wait(5 + math.random() * 5)
@@ -372,7 +372,6 @@ end
 if resultEvent and actionEvent then
     connect(resultEvent.OnClientEvent, function()
         if not (enabled and CONFIG.AUTO_REPLAY) then return end
-        -- [Stealth Update] สุ่มหน่วงเวลาก่อนกดรีเพลย์ให้ดูเป็นธรรมชาติ
         task.delay(CONFIG.REPLAY_DELAY + (math.random() * 1.5), function()
             if running and enabled then
                 actionEvent:FireServer("Replay")
@@ -426,8 +425,8 @@ if CONFIG.SHOW_BUTTON then
         label.Parent = gui
         task.spawn(function()
             while running do
-                label.Text = string.format("%s\nRuns %d | Wins %d | Centipedes %d | Dodged %d",
-                    status, stats.runs, stats.wins, stats.centipedes, stats.dodges)
+                label.Text = string.format("%s\nRuns %s | Wins %d | Centipedes %d | Dodged %d",
+                    status, tostring(stats.runs), stats.wins, stats.centipedes, stats.dodges)
                 task.wait(0.4)
             end
         end)
