@@ -1,4 +1,4 @@
--- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Ultimate Edition)
+-- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Ultimate + Auto Reconnect/Redirect)
 local CONFIG = {
     ATTACK_INTERVAL   = 0.15,  -- ความเร็วในการโจมตี (วินาที)
     MOVE_SPEED        = 120,   -- ความเร็วในการเดินเข้าหาบอส
@@ -19,6 +19,7 @@ local Players             = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
 local VirtualUser       = game:GetService("VirtualUser")
+local TeleportService   = game:GetService("TeleportService")
 local LocalPlayer       = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
 -- ระบบกัน AFK ป้องกันเกมเตะเมื่อปล่อยทิ้งไว้นานๆ
@@ -319,14 +320,19 @@ if resultEvent and actionEvent then
     end)
 end
 
--- ระบบตรวจสอบและล็อกห้องเรด (ป้องกันไม่ให้สคริปต์รันเพี้ยนเวลาเซิร์ฟเวอร์มีปัญหา)
+-- ระบบตรวจสอบและดักจับการเด้งกลับไปดันหอคอย (Auto Redirect Guard)
 task.spawn(function()
     while running do
-        task.wait(2)
+        task.wait(3)
         pcall(function()
             local base = workspace:FindFirstChild("Bases")
+            -- ถ้าหาฐานไม่เจอ หรือตรวจพบว่าถูกดีดกลับไปแมพหลัก/ดันเก่า ให้ส่งสัญญาณพยายามเข้าดันตะขาบใหม่
             if not base and running and stats.runs > 0 then
-                status = "Out of Raid Zone (Waiting...)"
+                status = "Redirecting back to Centipede..."
+                -- สั่งเรียกอีเวนต์รีเพลย์หรือส่งค่าซ้ำเพื่อบังคับดึงกลับห้องตะขาบ
+                if actionEvent then
+                    actionEvent:FireServer("Replay")
+                end
             end
         end)
     end
