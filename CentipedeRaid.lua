@@ -1,4 +1,4 @@
--- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Community Safe Edition - PlaceId Guard)
+-- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Ultimate Anti-Stuck Edition)
 local CONFIG = {
     ATTACK_INTERVAL   = 0.15,  -- ความเร็วในการโจมตี (วินาที)
     MOVE_SPEED        = 120,   -- ความเร็วในการเดินเข้าหาบอส
@@ -8,7 +8,8 @@ local CONFIG = {
     HIT_OTHER_ENEMIES = false, -- ตีมอนสเตอร์ตัวอื่นไหมถ้าบอสยังไม่เกิด
     AUTO_READY        = true,  -- กด Ready อัตโนมัติในห้องรอ
     READY_DELAY       = 6,     -- เวลารอก่อนกด Ready
-    AUTO_REPLAY       = false, -- ปิด Auto Replay ป้องกันแมพตีกัน
+    AUTO_REPLAY       = true,  -- เปิด Auto Replay เพื่อวนลูปฟาร์มต่อ
+    REPLAY_DELAY      = 3,     -- เวลารอก่อนกด Replay
     SHOW_BUTTON       = true,  -- แสดงปุ่มเปิด/ปิดบนหน้าจอ
 }
 
@@ -181,6 +182,8 @@ end
 local lastAttack   = 0
 local wasDodging   = false
 local trackedKills = {}
+local lastPos      = Vector3.zero
+local stuckTime    = 0
 
 local function countKill(target)
     if trackedKills[target] then return end
@@ -202,6 +205,27 @@ local function step(dt)
     end
 
     local here = hrp.Position
+
+    -- ระบบตรวจสอบตัวติดขอบ/ติดมุมอับ (Anti-Stuck Mechanism)
+    if (flat(here) - flat(lastPos)).Magnitude < 0.5 then
+        stuckTime += dt
+        if stuckTime > 2.5 then -- ถ้าติดอยู่กับที่เป็นเวลาเกิน 2.5 วินาที
+            stuckTime = 0
+            local base = getBase()
+            if base then
+                local spawnPart = base:FindFirstChild("SpawnLocation") or base.PrimaryPart
+                if spawnPart then
+                    hrp.CFrame = spawnPart.CFrame + Vector3.new(0, 5, 0) -- ดีดตัวกลับมาตั้งหลักตรงกลางฐานทันที
+                    status = "Unstuck from corner!"
+                    return
+                end
+            end
+        end
+    else
+        stuckTime = 0
+        lastPos = here
+    end
+
     local target, isCentipede = findTarget(here)
     local goal = here
     local targetRoot
@@ -271,6 +295,8 @@ if LocalPlayer.Character then task.spawn(watchCharacter, LocalPlayer.Character) 
 local readyEvent  = RemoteEvents and RemoteEvents:FindFirstChild("RaidReadyRequestEvent")
 local lobbyEvent  = RemoteEvents and RemoteEvents:FindFirstChild("RaidLobbyStatusEvent")
 local statusEvent = RemoteEvents and RemoteEvents:FindFirstChild("RaidStatusEvent")
+local resultEvent = RemoteEvents and RemoteEvents:FindFirstChild("RaidResultEvent")
+local actionEvent = RemoteEvents and RemoteEvents:FindFirstChild("RaidResultActionEvent")
 
 local lobbySeenAt, lastReady = nil, 0
 if lobbyEvent and readyEvent then
@@ -303,22 +329,20 @@ if statusEvent then
     end)
 end
 
--- ระบบตรวจสอบพื้นที่และป้องกันแรมรั่วขั้นเด็ดขาด (Safe Exit Guard)
-task.spawn(function()
-    while running do
-        task.wait(3)
-        pcall(function()
-            local base = workspace:FindFirstChild("Bases")
-            -- ถ้าตรวจสอบพบว่าหลุดออกจากโซนเรด (กลับมาหน้าหอคอยหลัก) ให้เคลียร์ค่าและหยุดลูปเพื่อเซฟแอปไม่ให้เด้งหลุด
-            if not base and running and stats.runs > 0 then
-                status = "Out of Raid Zone (Paused safely)"
-                table.clear(dangerZones)
-                -- ตัดการทำงานส่วนคำนวณชั่วคราว ป้องกัน Delta ใช้แรมพุ่งจน Force Close
-                enabled = false
+if resultEvent and actionEvent then
+    connect(resultEvent.OnClientEvent, function()
+        if not (enabled and CONFIG.AUTO_REPLAY) then return end
+        status = "Match Ended - Replaying..."
+        table.clear(dangerZones)
+        task.delay(CONFIG.REPLAY_DELAY, function()
+            if running and enabled and actionEvent then
+                pcall(function()
+                    actionEvent:FireServer("Replay")
+                end)
             end
         end)
-    end
-end)
+    end)
+end
 
 local gui
 if CONFIG.SHOW_BUTTON then
