@@ -1,4 +1,4 @@
--- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Max Difficulty, Stealth & Auto-Reset Edition)
+-- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Extreme Mode & Auto-Reset Edition)
 local CONFIG = {
     ATTACK_INTERVAL   = 0.12,  -- base seconds between sword hits (randomized slightly)
     MOVE_SPEED        = 120,   -- studs per second when sliding to a Centipede
@@ -14,7 +14,7 @@ local CONFIG = {
 
     AUTO_ENTER        = true,        -- in the main game: create the raid party and start it
     RAID_NAME         = "11th Ward", -- Tree Hideout
-    DIFFICULTY        = "Nightmare", -- ระดับยากสุด (สามารถเปลี่ยนเป็น Extreme หรือ Expert ตามเกมได้ครับ)
+    DIFFICULTY        = "Extreme",   -- ตั้งค่าเป็นโหมด Extreme ตามรูปเกมจริง
     ENTER_DELAY       = 8,           -- seconds to wait in the main game before entering
     SCRIPT_URL        = "https://raw.githubusercontent.com/ZeroVector404/Defeat-Anime-RNG/refs/heads/main/CentipedeRaid.lua",
 }
@@ -42,7 +42,6 @@ end
 
 -- ---------------------------------------------------------------- wrong place & auto-reset handler
 if game.PlaceId ~= RAID_PLACE then
-    -- ถ้าหลุดไปโผล่ที่หอคอยหรือแมพอื่นที่ไม่ใช่หน้าหลัก ให้รีเซ็ตตัวละครเพื่อออกทันที
     if game.PlaceId ~= MAIN_PLACE then
         print("[CentipedeRaid] Stuck in lobby/tower, auto-resetting character to escape...")
         local char = LocalPlayer.Character
