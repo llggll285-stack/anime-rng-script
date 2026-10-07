@@ -1,6 +1,9 @@
--- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Fixed Wrong Raid Guard)
+-- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Stealth & Human-like Edition)
+-- Slides to every Centipede, hits it with randomized intervals, dodges debris, auto-unstucks,
+-- takes human-like rest breaks every 20 runs, and strictly guards against wrong places.
+
 local CONFIG = {
-    ATTACK_INTERVAL   = 0.12,  -- seconds between sword hits
+    ATTACK_INTERVAL   = 0.12,  -- base seconds between sword hits (will be randomized slightly)
     MOVE_SPEED        = 120,   -- studs per second when sliding to a Centipede
     DODGE_SPEED       = 200,   -- studs per second when leaving a debris zone
     STAND_DISTANCE    = 4,     -- how close to stand to the Centipede
@@ -32,30 +35,25 @@ if env.__CentipedeRaid then
     pcall(env.__CentipedeRaid.stop)
 end
 
--- ---------------------------------------------------------------- place guard
+-- ---------------------------------------------------------------- place guard & strict wrong place handler
 local MAIN_PLACE = 92606991708989
 local RAID_PLACE = 134342669880221
 
--- keep the script alive across teleports
 local queueTeleport = queue_on_teleport or queueonteleport or (syn and syn.queue_on_teleport)
 if queueTeleport and CONFIG.SCRIPT_URL ~= "" then
     pcall(queueTeleport, string.format('loadstring(game:HttpGet("%s"))()', CONFIG.SCRIPT_URL))
 end
 
--- [ระบบเช็คแมพและความปลอดภัย]
 if game.PlaceId ~= RAID_PLACE then
-    -- ถ้าไม่อยู่ในแมพเรดตะขาบ ให้เช็คว่าอยู่ที่ไหน
     if game.PlaceId ~= MAIN_PLACE then
-        -- ถ้าเผลอไปโผล่ดันอื่น หรือดันหอคอยอื่นๆ ให้เตะกลับหน้าเกมหลักทันที!
-        print("[CentipedeRaid] Wrong place detected (e.g. Lobby/Other raid), teleporting back to main game...")
+        print("[CentipedeRaid] Wrong place detected (PlaceId: " .. tostring(game.PlaceId) .. "), forcing teleport back to Main Game...")
         for _ = 1, 20 do
             pcall(TeleportService.Teleport, TeleportService, MAIN_PLACE, LocalPlayer)
-            task.wait(10)
+            task.wait(5)
         end
         return
     end
 
-    -- ถ้าอยู่ที่หน้าเกมหลัก (Main Game) และเปิด AUTO_ENTER ไว้ ให้เริ่มสร้างปาร์ตี้เข้าดันตะขาบ
     if not CONFIG.AUTO_ENTER then return end
 
     local events = ReplicatedStorage:WaitForChild("RemoteEvents", 60)
@@ -65,7 +63,7 @@ if game.PlaceId ~= RAID_PLACE then
 
     for _ = 1, 60 do
         pcall(party.InvokeServer, party, "Create", CONFIG.RAID_NAME, CONFIG.DIFFICULTY)
-        task.wait(1)
+        task.wait(1 + math.random() * 0.5) -- สุ่มหน่วงเวลาสร้างปาร์ตี้เล็กน้อย
         local ok2, started, why = pcall(party.InvokeServer, party, "Start")
         if ok2 and started then
             print("[CentipedeRaid] raid started, entering...")
@@ -80,7 +78,7 @@ if game.PlaceId ~= RAID_PLACE then
     return
 end
 
--- (โค้ดส่วนการต่อสู้, หลบเศษซาก, Anti-Stuck และ UI ด้านในเรดตะขาบ ทำงานปกติเหมือนเดิม)
+-- ---------------------------------------------------------------- in-raid logic
 local RemoteEvents = ReplicatedStorage:WaitForChild("RemoteEvents")
 local AttackEvent  = RemoteEvents:WaitForChild("PlayerAttackEvent")
 local WeaponsDatabase
@@ -239,6 +237,7 @@ local function step(dt)
 
     local here = hrp.Position
 
+    -- [Anti-Stuck Mechanism]
     if (flat(here) - flat(lastPos)).Magnitude < 0.5 then
         stuckTime += dt
         if stuckTime > 2.5 then
@@ -295,7 +294,10 @@ local function step(dt)
 
     ensureWeapon(char, hum)
     local now = os.clock()
-    if now - lastAttack >= CONFIG.ATTACK_INTERVAL then
+    
+    -- [Stealth Update] สุ่มหน่วงเวลาโจมตีเลียนแบบคนจริง (แกว่งช่วง 0.11 - 0.16 วินาที)
+    local randomInterval = CONFIG.ATTACK_INTERVAL + (math.random() * 0.04)
+    if now - lastAttack >= randomInterval then
         lastAttack = now
         AttackEvent:FireServer()
     end
@@ -340,7 +342,7 @@ if lobbyEvent and readyEvent then
         if info.SelfReady == true then return end
         local char = LocalPlayer.Character
         if not (char and char:FindFirstChild("HumanoidRootPart")) then return end
-        if os.clock() - lobbySeenAt < CONFIG.READY_DELAY then return end
+        if os.clock() - lobbySeenAt < (CONFIG.READY_DELAY + math.random() * 1.5) then return end -- สุ่มหน่วงเวลาพร้อมรบ
         if os.clock() - lastReady < 3 then return end
         lastReady = os.clock()
         readyEvent:FireServer()
@@ -356,6 +358,11 @@ if statusEvent then
             table.clear(dangerZones)
         elseif info.Kind == "Victory" then
             stats.wins += 1
+            -- [Stealth Update] ทุกๆ ครบ 20 รอบ แอบสุ่มพักเบรกชั่วคราว 5-10 วินาที ป้องกันเซิร์ฟเวอร์จับพฤติกรรมบอท
+            if stats.runs % 20 == 0 then
+                status = "Taking a short natural break..."
+                task.wait(5 + math.random() * 5)
+            end
         elseif info.Kind == "Defeat" then
             stats.losses += 1
         end
@@ -365,7 +372,8 @@ end
 if resultEvent and actionEvent then
     connect(resultEvent.OnClientEvent, function()
         if not (enabled and CONFIG.AUTO_REPLAY) then return end
-        task.delay(CONFIG.REPLAY_DELAY, function()
+        -- [Stealth Update] สุ่มหน่วงเวลาก่อนกดรีเพลย์ให้ดูเป็นธรรมชาติ
+        task.delay(CONFIG.REPLAY_DELAY + (math.random() * 1.5), function()
             if running and enabled then
                 actionEvent:FireServer("Replay")
             end
