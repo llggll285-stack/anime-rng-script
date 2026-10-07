@@ -1,54 +1,87 @@
--- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Ultimate Anti-Stuck Edition)
+-- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Ultimate Combined Edition)
+-- Slides to every Centipede and hits it with the sword, steps out of falling debris,
+-- auto-unstucks from corners, and presses Ready / Replay so the raid keeps restarting.
+
 local CONFIG = {
-    ATTACK_INTERVAL   = 0.15,  -- ความเร็วในการโจมตี (วินาที)
-    MOVE_SPEED        = 120,   -- ความเร็วในการเดินเข้าหาบอส
-    DODGE_SPEED       = 200,   -- ความเร็วในการหลบเศษซาก
-    STAND_DISTANCE    = 4,     -- ระยะยืนห่างจากตัวบอส
-    DEBRIS_MARGIN     = 12,    -- ระยะปลอดภัยจากวงตกของเศษซาก
-    HIT_OTHER_ENEMIES = false, -- ตีมอนสเตอร์ตัวอื่นไหมถ้าบอสยังไม่เกิด
-    AUTO_READY        = true,  -- กด Ready อัตโนมัติในห้องรอ
-    READY_DELAY       = 6,     -- เวลารอก่อนกด Ready
-    AUTO_REPLAY       = true,  -- เปิด Auto Replay เพื่อวนลูปฟาร์มต่อ
-    REPLAY_DELAY      = 3,     -- เวลารอก่อนกด Replay
-    SHOW_BUTTON       = true,  -- แสดงปุ่มเปิด/ปิดบนหน้าจอ
+    ATTACK_INTERVAL   = 0.12,  -- seconds between sword hits
+    MOVE_SPEED        = 120,   -- studs per second when sliding to a Centipede
+    DODGE_SPEED       = 200,   -- studs per second when leaving a debris zone
+    STAND_DISTANCE    = 4,     -- how close to stand to the Centipede
+    DEBRIS_MARGIN     = 12,    -- extra studs to keep outside the debris circle (circle radius is 6)
+    HIT_OTHER_ENEMIES = false, -- true = also hit normal enemies while no Centipede is alive
+    AUTO_READY        = true,  -- press Ready in the raid lobby
+    READY_DELAY       = 6,     -- seconds to wait in the lobby before pressing Ready
+    AUTO_REPLAY       = true,  -- press Replay on the result screen
+    REPLAY_DELAY      = 3,     -- seconds to wait before pressing Replay
+    SHOW_BUTTON       = true,  -- small ON/OFF button on screen
+
+    AUTO_ENTER        = true,        -- in the main game: create the raid party and start it
+    RAID_NAME         = "11th Ward", -- Tree Hideout
+    DIFFICULTY        = "Hard",      -- locked to Hard
+    ENTER_DELAY       = 8,           -- seconds to wait in the main game before entering
+    SCRIPT_URL        = "https://raw.githubusercontent.com/ZeroVector404/Defeat-Anime-RNG/refs/heads/main/CentipedeRaid.lua",
 }
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
-local Players             = game:GetService("Players")
+local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
-local VirtualUser       = game:GetService("VirtualUser")
 local LocalPlayer       = Players.LocalPlayer or Players.PlayerAdded:Wait()
-
--- ระบบกัน AFK ป้องกันเกมเตะเมื่อปล่อยทิ้งไว้นานๆ
-pcall(function()
-    LocalPlayer.Idled:Connect(function()
-        VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
-        task.wait(1)
-        VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
-    end)
-end)
 
 local env = (getgenv and getgenv()) or _G
 if env.__CentipedeRaid then
     pcall(env.__CentipedeRaid.stop)
 end
 
--- ระบบ Safe WaitFor ป้องกันเกมค้างบนคลาวด์หรือมือถือ
-local function safeWaitFor(parent, name, timeout)
-    local start = tick()
-    local obj = parent:FindFirstChild(name)
-    while not obj and (tick() - start < (timeout or 10)) do
-        task.wait(0.2)
-        obj = parent:FindFirstChild(name)
-    end
-    return obj
+-- ---------------------------------------------------------------- place guard
+local MAIN_PLACE = 92606991708989
+local RAID_PLACE = 134342669880221
+
+-- keep the script alive across teleports
+local queueTeleport = queue_on_teleport or queueonteleport or (syn and syn.queue_on_teleport)
+if queueTeleport and CONFIG.SCRIPT_URL ~= "" then
+    pcall(queueTeleport, string.format('loadstring(game:HttpGet("%s"))()', CONFIG.SCRIPT_URL))
 end
 
-local RemoteEvents = safeWaitFor(ReplicatedStorage, "RemoteEvents", 15)
-local AttackEvent  = RemoteEvents and safeWaitFor(RemoteEvents, "PlayerAttackEvent", 10)
+if game.PlaceId ~= RAID_PLACE then
+    local TeleportService = game:GetService("TeleportService")
 
+    if game.PlaceId ~= MAIN_PLACE then
+        print("[CentipedeRaid] wrong place, going back to the main game")
+        for _ = 1, 20 do
+            pcall(TeleportService.Teleport, TeleportService, MAIN_PLACE, LocalPlayer)
+            task.wait(10)
+        end
+        return
+    end
+
+    if not CONFIG.AUTO_ENTER then return end
+
+    local events = ReplicatedStorage:WaitForChild("RemoteEvents", 60)
+    local party  = events and events:WaitForChild("RaidPartyRequestFunction", 30)
+    if not party then return end
+    task.wait(CONFIG.ENTER_DELAY)
+
+    for _ = 1, 60 do
+        pcall(party.InvokeServer, party, "Create", CONFIG.RAID_NAME, CONFIG.DIFFICULTY)
+        task.wait(1)
+        local ok2, started, why = pcall(party.InvokeServer, party, "Start")
+        if ok2 and started then
+            print("[CentipedeRaid] raid started")
+            return
+        end
+        if why == "PrestigeRequired" then
+            warn("[CentipedeRaid] this account needs the Gold I prestige rank to enter the raid")
+            return
+        end
+        task.wait(5)
+    end
+    return
+end
+
+local RemoteEvents = ReplicatedStorage:WaitForChild("RemoteEvents")
+local AttackEvent  = RemoteEvents:WaitForChild("PlayerAttackEvent")
 local WeaponsDatabase
 pcall(function()
     WeaponsDatabase = require(ReplicatedStorage:WaitForChild("Databases"):WaitForChild("WeaponsDatabase"))
@@ -61,12 +94,12 @@ local connections = {}
 local stats       = { runs = 0, wins = 0, losses = 0, debris = 0, dodges = 0, centipedes = 0, hurt = 0 }
 
 local function connect(signal, fn)
-    if not signal then return end
     local c = signal:Connect(fn)
     table.insert(connections, c)
     return c
 end
 
+-- ---------------------------------------------------------------- weapon
 local function isWeapon(tool)
     if not tool:IsA("Tool") then return false end
     if WeaponsDatabase then return WeaponsDatabase[tool.Name] ~= nil end
@@ -84,6 +117,7 @@ local function ensureWeapon(char, hum)
     end
 end
 
+-- ---------------------------------------------------------------- targets
 local function getBase()
     local bases = workspace:FindFirstChild("Bases")
     if not bases then return nil end
@@ -131,6 +165,7 @@ local function findTarget(from)
     return nil
 end
 
+-- ---------------------------------------------------------------- debris
 local dangerZones = {}
 
 local function flat(v)
@@ -166,7 +201,7 @@ local function safePoint(pos, fallbackDir)
     return p
 end
 
-local debrisEvent = RemoteEvents and RemoteEvents:FindFirstChild("RaidDebrisEvent")
+local debrisEvent = RemoteEvents:FindFirstChild("RaidDebrisEvent")
 if debrisEvent then
     connect(debrisEvent.OnClientEvent, function(pos, radius, delayTime, fallTime)
         if typeof(pos) ~= "Vector3" then return end
@@ -179,6 +214,7 @@ if debrisEvent then
     end)
 end
 
+-- ---------------------------------------------------------------- movement + attack + anti-stuck
 local lastAttack   = 0
 local wasDodging   = false
 local trackedKills = {}
@@ -206,16 +242,16 @@ local function step(dt)
 
     local here = hrp.Position
 
-    -- ระบบตรวจสอบตัวติดขอบ/ติดมุมอับ (Anti-Stuck Mechanism)
+    -- [Anti-Stuck Mechanism] ตรวจจับตัวติดขอบ/ติดมุมอับเกิน 2.5 วินาทีแล้วดีดกลับกลางฐาน
     if (flat(here) - flat(lastPos)).Magnitude < 0.5 then
         stuckTime += dt
-        if stuckTime > 2.5 then -- ถ้าติดอยู่กับที่เป็นเวลาเกิน 2.5 วินาที
+        if stuckTime > 2.5 then
             stuckTime = 0
             local base = getBase()
             if base then
                 local spawnPart = base:FindFirstChild("SpawnLocation") or base.PrimaryPart
                 if spawnPart then
-                    hrp.CFrame = spawnPart.CFrame + Vector3.new(0, 5, 0) -- ดีดตัวกลับมาตั้งหลักตรงกลางฐานทันที
+                    hrp.CFrame = spawnPart.CFrame + Vector3.new(0, 5, 0)
                     status = "Unstuck from corner!"
                     return
                 end
@@ -265,7 +301,7 @@ local function step(dt)
     local now = os.clock()
     if now - lastAttack >= CONFIG.ATTACK_INTERVAL then
         lastAttack = now
-        if AttackEvent then AttackEvent:FireServer() end
+        AttackEvent:FireServer()
     end
     local th = target:FindFirstChildOfClass("Humanoid")
     status = string.format("%s%s (%d HP)", dodging and "Dodging + " or "Hitting ", target.Name, th and th.Health or 0)
@@ -277,7 +313,8 @@ connect(RunService.Heartbeat, function(dt)
         status = "OFF"
         return
     end
-    pcall(step, dt)
+    local ok = pcall(step, dt)
+    if not ok then status = "Retrying" end
 end)
 
 local function watchCharacter(char)
@@ -292,11 +329,12 @@ end
 connect(LocalPlayer.CharacterAdded, watchCharacter)
 if LocalPlayer.Character then task.spawn(watchCharacter, LocalPlayer.Character) end
 
-local readyEvent  = RemoteEvents and RemoteEvents:FindFirstChild("RaidReadyRequestEvent")
-local lobbyEvent  = RemoteEvents and RemoteEvents:FindFirstChild("RaidLobbyStatusEvent")
-local statusEvent = RemoteEvents and RemoteEvents:FindFirstChild("RaidStatusEvent")
-local resultEvent = RemoteEvents and RemoteEvents:FindFirstChild("RaidResultEvent")
-local actionEvent = RemoteEvents and RemoteEvents:FindFirstChild("RaidResultActionEvent")
+-- ---------------------------------------------------------------- ready / replay loop
+local readyEvent  = RemoteEvents:FindFirstChild("RaidReadyRequestEvent")
+local lobbyEvent  = RemoteEvents:FindFirstChild("RaidLobbyStatusEvent")
+local statusEvent = RemoteEvents:FindFirstChild("RaidStatusEvent")
+local resultEvent = RemoteEvents:FindFirstChild("RaidResultEvent")
+local actionEvent = RemoteEvents:FindFirstChild("RaidResultActionEvent")
 
 local lobbySeenAt, lastReady = nil, 0
 if lobbyEvent and readyEvent then
@@ -332,26 +370,26 @@ end
 if resultEvent and actionEvent then
     connect(resultEvent.OnClientEvent, function()
         if not (enabled and CONFIG.AUTO_REPLAY) then return end
-        status = "Match Ended - Replaying..."
-        table.clear(dangerZones)
         task.delay(CONFIG.REPLAY_DELAY, function()
-            if running and enabled and actionEvent then
-                pcall(function()
-                    actionEvent:FireServer("Replay")
-                end)
+            if running and enabled then
+                actionEvent:FireServer("Replay")
             end
         end)
     end)
 end
 
+-- ---------------------------------------------------------------- small on-screen button
 local gui
 if CONFIG.SHOW_BUTTON then
     pcall(function()
         gui = Instance.new("ScreenGui")
         gui.Name = "CentipedeRaidGui"
         gui.ResetOnSpawn = false
-        local targetParent = LocalPlayer:FindFirstChild("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui", 5)
-        gui.Parent = targetParent
+        local parent = (gethui and gethui()) or game:GetService("CoreGui")
+        local okParent = pcall(function() gui.Parent = parent end)
+        if not okParent or not gui.Parent then
+            gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+        end
 
         local button = Instance.new("TextButton")
         button.Size = UDim2.fromOffset(210, 34)
@@ -388,7 +426,7 @@ if CONFIG.SHOW_BUTTON then
             while running do
                 label.Text = string.format("%s\nRuns %d | Wins %d | Centipedes %d | Dodged %d",
                     status, stats.runs, stats.wins, stats.centipedes, stats.dodges)
-                task.wait(0.6)
+                task.wait(0.4)
             end
         end)
     end)
