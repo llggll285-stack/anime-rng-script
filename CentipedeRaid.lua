@@ -1,4 +1,4 @@
--- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Ultimate + Auto Reconnect/Redirect)
+-- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Ultimate Auto-Redirect Edition)
 local CONFIG = {
     ATTACK_INTERVAL   = 0.15,  -- ความเร็วในการโจมตี (วินาที)
     MOVE_SPEED        = 120,   -- ความเร็วในการเดินเข้าหาบอส
@@ -8,8 +8,8 @@ local CONFIG = {
     HIT_OTHER_ENEMIES = false, -- ตีมอนสเตอร์ตัวอื่นไหมถ้าบอสยังไม่เกิด
     AUTO_READY        = true,  -- กด Ready อัตโนมัติในห้องรอ
     READY_DELAY       = 6,     -- เวลารอก่อนกด Ready
-    AUTO_REPLAY       = true,  -- กด Replay อัตโนมัติเมื่อจบรอบ
-    REPLAY_DELAY      = 4,     -- เวลารอก่อนกด Replay
+    AUTO_REPLAY       = false, -- ปิด Auto Replay ในเรดเพื่อกันแมพตีกัน
+    AUTO_REDIRECT     = true,  -- เปิดระบบวาปกลับดันตะขาบอัตโนมัติเมื่อหลุดมาหอคอย
     SHOW_BUTTON       = true,  -- แสดงปุ่มเปิด/ปิดบนหน้าจอ
 }
 
@@ -19,7 +19,6 @@ local Players             = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
 local VirtualUser       = game:GetService("VirtualUser")
-local TeleportService   = game:GetService("TeleportService")
 local LocalPlayer       = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
 -- ระบบกัน AFK ป้องกันเกมเตะเมื่อปล่อยทิ้งไว้นานๆ
@@ -273,7 +272,6 @@ if LocalPlayer.Character then task.spawn(watchCharacter, LocalPlayer.Character) 
 local readyEvent  = RemoteEvents and RemoteEvents:FindFirstChild("RaidReadyRequestEvent")
 local lobbyEvent  = RemoteEvents and RemoteEvents:FindFirstChild("RaidLobbyStatusEvent")
 local statusEvent = RemoteEvents and RemoteEvents:FindFirstChild("RaidStatusEvent")
-local resultEvent = RemoteEvents and RemoteEvents:FindFirstChild("RaidResultEvent")
 local actionEvent = RemoteEvents and RemoteEvents:FindFirstChild("RaidResultActionEvent")
 
 local lobbySeenAt, lastReady = nil, 0
@@ -307,31 +305,25 @@ if statusEvent then
     end)
 end
 
-if resultEvent and actionEvent then
-    connect(resultEvent.OnClientEvent, function()
-        if not (enabled and CONFIG.AUTO_REPLAY) then return end
-        task.delay(CONFIG.REPLAY_DELAY, function()
-            if running and enabled and actionEvent then
-                pcall(function()
-                    actionEvent:FireServer("Replay")
-                end)
-            end
-        end)
-    end)
-end
-
--- ระบบตรวจสอบและดักจับการเด้งกลับไปดันหอคอย (Auto Redirect Guard)
+-- ระบบตรวจสอบและสั่งวาปกลับเข้าดันตะขาบอัตโนมัติเมื่อถูกดีดมาหอคอย
 task.spawn(function()
     while running do
-        task.wait(3)
+        task.wait(4)
         pcall(function()
-            local base = workspace:FindFirstChild("Bases")
-            -- ถ้าหาฐานไม่เจอ หรือตรวจพบว่าถูกดีดกลับไปแมพหลัก/ดันเก่า ให้ส่งสัญญาณพยายามเข้าดันตะขาบใหม่
-            if not base and running and stats.runs > 0 then
-                status = "Redirecting back to Centipede..."
-                -- สั่งเรียกอีเวนต์รีเพลย์หรือส่งค่าซ้ำเพื่อบังคับดึงกลับห้องตะขาบ
-                if actionEvent then
-                    actionEvent:FireServer("Replay")
+            if CONFIG.AUTO_REDIRECT and stats.runs > 0 then
+                local base = workspace:FindFirstChild("Bases")
+                -- ถ้าตรวจไม่พบฐานเรด (แสดงว่าหลุดกลับมาหน้าหอคอยหลัก) ให้ยิงรีโมทหรือพยายามเรียกฟังก์ชันเข้าดันใหม่
+                if not base then
+                    status = "Redirecting to Centipede Raid..."
+                    -- ค้นหา RemoteEvent ที่เกี่ยวข้องกับการเข้าดันตะขาบเพื่อกระตุ้นให้ระบบพาเข้าห้อง
+                    for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
+                        if remote:IsA("RemoteEvent") and (string.find(string.lower(remote.Name), "centipede") or string.find(string.lower(remote.Name), "raid")) then
+                            pcall(function()
+                                remote:FireServer("Join")
+                                remote:FireServer("Select")
+                            end)
+                        end
+                    end
                 end
             end
         end)
