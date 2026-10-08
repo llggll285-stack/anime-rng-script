@@ -1,4 +1,4 @@
--- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Auto-Reset Stuck Fix)
+-- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Loop 10 times then Return)
 local CONFIG = {
     ATTACK_INTERVAL   = 0.12,  -- seconds between sword hits
     MOVE_SPEED        = 120,   -- studs per second when sliding to a Centipede
@@ -9,7 +9,8 @@ local CONFIG = {
     AUTO_READY        = true,  -- press Ready in the raid lobby
     READY_DELAY       = 6,     -- seconds to wait in the lobby before pressing Ready
     AUTO_REPLAY       = true,  -- press Replay on the result screen
-    REPLAY_DELAY      = 3,     -- seconds to wait before pressing Replay
+    REPLAY_DELAY      = 3,     -- seconds to wait before pressing the result button
+    MAX_RUNS          = 10,    -- จำนวนรอบที่ต้องการให้เล่นซ้ำในห้องนี้ ก่อนจะกดกลับหน้าหลัก
     SHOW_BUTTON       = true,  -- small ON/OFF button on screen
 
     AUTO_ENTER        = true,       -- in the main game: create the raid party and start it
@@ -341,7 +342,19 @@ if resultEvent and actionEvent then
         if not (enabled and CONFIG.AUTO_REPLAY) then return end
         task.delay(CONFIG.REPLAY_DELAY, function()
             if running and enabled then
-                actionEvent:FireServer("Replay")
+                -- เช็คว่าเล่นครบตามจำนวนรอบที่กำหนด (MAX_RUNS) หรือยัง
+                if stats.runs >= CONFIG.MAX_RUNS then
+                    print("[CentipedeRaid] Completed " .. CONFIG.MAX_RUNS .. " runs, returning to main lobby...")
+                    actionEvent:FireServer("Return")
+                    task.delay(10, function()
+                        if running and enabled and game.PlaceId ~= MAIN_PLACE then
+                            pcall(function() game:GetService("TeleportService"):Teleport(MAIN_PLACE, LocalPlayer) end)
+                        end
+                    end)
+                else
+                    -- ถ้ายังไม่ครบ ให้กด Replay เล่นซ้ำรอบถัดไปในห้องเดิม
+                    actionEvent:FireServer("Replay")
+                end
             end
         end)
     end)
@@ -379,7 +392,7 @@ if CONFIG.SHOW_BUTTON then
             refresh()
         end)
 
-        val label = Instance.new("TextLabel")
+        local label = Instance.new("TextLabel")
         label.Size = UDim2.fromOffset(260, 52)
         label.Position = UDim2.new(0, 12, 0.5, 38)
         label.BackgroundTransparency = 1
@@ -392,8 +405,8 @@ if CONFIG.SHOW_BUTTON then
         label.Parent = gui
         task.spawn(function()
             while running do
-                label.Text = string.format("%s\nRuns %d | Wins %d | Centipedes %d | Dodged %d\nMode: %s",
-                    status, stats.runs, stats.wins, stats.centipedes, stats.dodges,
+                label.Text = string.format("%s\nRuns: %d/%d | Wins %d | Centipedes %d\nMode: %s",
+                    status, stats.runs, CONFIG.MAX_RUNS, stats.wins, stats.centipedes,
                     tostring(workspace:GetAttribute("ActiveGamemode")))
                 task.wait(0.4)
             end
@@ -411,7 +424,7 @@ env.__CentipedeRaid = {
     end,
 }
 
--- ---------------------------------------------------------------- wrong event guard (Auto-Reset & Teleport)
+-- ---------------------------------------------------------------- wrong event guard
 task.spawn(function()
     local wrongSince
     while running do
@@ -433,7 +446,6 @@ task.spawn(function()
                 end
                 task.wait(2)
                 
-                env.__CentPyedRaid = nil -- reset env
                 env.__CentipedeRaid.stop()
                 for _ = 1, 20 do
                     pcall(TeleportService.Teleport, TeleportService, MAIN_PLACE, LocalPlayer)
