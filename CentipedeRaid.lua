@@ -1,4 +1,4 @@
--- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Fixed Wrong Event Guard)
+-- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Auto-Reset Stuck Fix)
 local CONFIG = {
     ATTACK_INTERVAL   = 0.12,  -- seconds between sword hits
     MOVE_SPEED        = 120,   -- studs per second when sliding to a Centipede
@@ -33,7 +33,6 @@ if env.__CentipedeRaid then
     pcall(env.__CentipedeRaid.stop)
 end
 
--- ---------------------------------------------------------------- place guard
 local MAIN_PLACE = 92606991708989
 local RAID_PLACE = 134342669880221
 
@@ -380,7 +379,7 @@ if CONFIG.SHOW_BUTTON then
             refresh()
         end)
 
-        local label = Instance.new("TextLabel")
+        val label = Instance.new("TextLabel")
         label.Size = UDim2.fromOffset(260, 52)
         label.Position = UDim2.new(0, 12, 0.5, 38)
         label.BackgroundTransparency = 1
@@ -412,7 +411,7 @@ env.__CentipedeRaid = {
     end,
 }
 
--- ---------------------------------------------------------------- wrong event guard (Fixed)
+-- ---------------------------------------------------------------- wrong event guard (Auto-Reset & Teleport)
 task.spawn(function()
     local wrongSince
     while running do
@@ -424,12 +423,21 @@ task.spawn(function()
             wrongSince = wrongSince or os.clock()
             status = "Wrong event (" .. tostring(mode) .. ")"
             if os.clock() - wrongSince >= CONFIG.WRONG_EVENT_SECONDS then
-                print("[CentipedeRaid] wrong event, going back to the main game")
+                print("[CentipedeRaid] stuck in wrong mode, resetting character and going back...")
                 local TeleportService = game:GetService("TeleportService")
+                
+                local char = LocalPlayer.Character
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    hum.Health = 0
+                end
+                task.wait(2)
+                
+                env.__CentPyedRaid = nil -- reset env
                 env.__CentipedeRaid.stop()
                 for _ = 1, 20 do
                     pcall(TeleportService.Teleport, TeleportService, MAIN_PLACE, LocalPlayer)
-                    task.wait(10)
+                    task.wait(5)
                 end
                 return
             end
