@@ -1,4 +1,4 @@
--- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Extreme Mode & Safe Loop Edition)
+-- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Fixed Wrong Event Guard)
 local CONFIG = {
     ATTACK_INTERVAL   = 0.12,  -- seconds between sword hits
     MOVE_SPEED        = 120,   -- studs per second when sliding to a Centipede
@@ -12,10 +12,12 @@ local CONFIG = {
     REPLAY_DELAY      = 3,     -- seconds to wait before pressing Replay
     SHOW_BUTTON       = true,  -- small ON/OFF button on screen
 
-    AUTO_ENTER        = true,        -- in the main game: create the raid party and start it
+    AUTO_ENTER        = true,       -- in the main game: create the raid party and start it
     RAID_NAME         = "11th Ward", -- Tree Hideout
-    DIFFICULTY        = "Extreme",   -- ปรับเป็นโหมด Extreme ตามที่คุณต้องการ
-    ENTER_DELAY       = 8,           -- seconds to wait in the main game before entering
+    DIFFICULTY        = "Extreme",  -- locked to Extreme
+    RAID_MODE         = "Kaneki",   -- game mode name of the Tree Hideout raid
+    WRONG_EVENT_SECONDS = 12,       -- leave if the game is in another mode for this long
+    ENTER_DELAY       = 8,          -- seconds to wait in the main game before entering
     SCRIPT_URL        = "https://raw.githubusercontent.com/ZeroVector404/Defeat-Anime-RNG/refs/heads/main/CentipedeRaid.lua",
 }
 
@@ -24,7 +26,6 @@ if not game:IsLoaded() then game.Loaded:Wait() end
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
-local TeleportService   = game:GetService("TeleportService")
 local LocalPlayer       = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
 local env = (getgenv and getgenv()) or _G
@@ -32,6 +33,7 @@ if env.__CentipedeRaid then
     pcall(env.__CentipedeRaid.stop)
 end
 
+-- ---------------------------------------------------------------- place guard
 local MAIN_PLACE = 92606991708989
 local RAID_PLACE = 134342669880221
 
@@ -41,17 +43,13 @@ if queueTeleport and CONFIG.SCRIPT_URL ~= "" then
 end
 
 if game.PlaceId ~= RAID_PLACE then
+    local TeleportService = game:GetService("TeleportService")
+
     if game.PlaceId ~= MAIN_PLACE then
-        print("[CentipedeRaid] Stuck in lobby/tower, auto-resetting character to escape...")
-        local char = LocalPlayer.Character
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            hum.Health = 0 -- สั่งตายเพื่อเด้งออกหอคอย
-        end
-        task.wait(3)
-        for _ = 1, 10 do
+        print("[CentipedeRaid] wrong place, going back to the main game")
+        for _ = 1, 20 do
             pcall(TeleportService.Teleport, TeleportService, MAIN_PLACE, LocalPlayer)
-            task.wait(5)
+            task.wait(10)
         end
         return
     end
@@ -383,7 +381,7 @@ if CONFIG.SHOW_BUTTON then
         end)
 
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.fromOffset(260, 36)
+        label.Size = UDim2.fromOffset(260, 52)
         label.Position = UDim2.new(0, 12, 0.5, 38)
         label.BackgroundTransparency = 1
         label.TextColor3 = Color3.new(1, 1, 1)
@@ -395,8 +393,9 @@ if CONFIG.SHOW_BUTTON then
         label.Parent = gui
         task.spawn(function()
             while running do
-                label.Text = string.format("%s\nRuns %d | Wins %d | Centipedes %d | Dodged %d",
-                    status, stats.runs, stats.wins, stats.centipedes, stats.dodges)
+                label.Text = string.format("%s\nRuns %d | Wins %d | Centipedes %d | Dodged %d\nMode: %s",
+                    status, stats.runs, stats.wins, stats.centipedes, stats.dodges,
+                    tostring(workspace:GetAttribute("ActiveGamemode")))
                 task.wait(0.4)
             end
         end)
@@ -412,3 +411,28 @@ env.__CentipedeRaid = {
         if gui then pcall(function() gui:Destroy() end) end
     end,
 }
+
+-- ---------------------------------------------------------------- wrong event guard (Fixed)
+task.spawn(function()
+    local wrongSince
+    while running do
+        task.wait(2)
+        local mode = workspace:GetAttribute("ActiveGamemode")
+        if mode == CONFIG.RAID_MODE then
+            wrongSince = nil
+        else
+            wrongSince = wrongSince or os.clock()
+            status = "Wrong event (" .. tostring(mode) .. ")"
+            if os.clock() - wrongSince >= CONFIG.WRONG_EVENT_SECONDS then
+                print("[CentipedeRaid] wrong event, going back to the main game")
+                local TeleportService = game:GetService("TeleportService")
+                env.__CentipedeRaid.stop()
+                for _ = 1, 20 do
+                    pcall(TeleportService.Teleport, TeleportService, MAIN_PLACE, LocalPlayer)
+                    task.wait(10)
+                end
+                return
+            end
+        end
+    end
+end)
