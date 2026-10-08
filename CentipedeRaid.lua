@@ -10,7 +10,7 @@ local CONFIG = {
     READY_DELAY       = 6,     -- seconds to wait in the lobby before pressing Ready
     AUTO_REPLAY       = true,  -- press Replay on the result screen
     REPLAY_DELAY      = 3,     -- seconds to wait before pressing the result button
-    MAX_RUNS          = 10,    -- จำนวนรอบที่ต้องการให้เล่นซ้ำในห้องนี้ ก่อนจะกดกลับหน้าหลัก
+    MAX_RUNS          = 6,    -- จำนวนรอบที่ต้องการให้เล่นซ้ำในห้องนี้ ก่อนจะกดกลับหน้าหลัก
     SHOW_BUTTON       = true,  -- small ON/OFF button on screen
 
     AUTO_ENTER        = true,       -- in the main game: create the raid party and start it
