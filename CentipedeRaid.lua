@@ -19,7 +19,7 @@ local CONFIG = {
     RAID_MODE         = "Kaneki",   -- game mode name of the Tree Hideout raid
     WRONG_EVENT_SECONDS = 12,       -- leave if the game is in another mode for this long
     ENTER_DELAY       = 8,          -- seconds to wait in the main game before entering
-    SCRIPT_URL        = "https://raw.githubusercontent.com/ZeroVector404/Defeat-Anime-RNG/refs/heads/main/CentipedeRaid.lua",
+    SCRIPT_URL        = "https://raw.githubusercontent.com/llggll285-stack/anime-rng-script/refs/heads/main/CentipedeRaid.lua",
 }
 
 if not game:IsLoaded() then game.Loaded:Wait() end
