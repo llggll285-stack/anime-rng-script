@@ -15,7 +15,7 @@ local CONFIG = {
 
     AUTO_ENTER        = true,       -- in the main game: create the raid party and start it
     RAID_NAME         = "11th Ward", -- Tree Hideout
-    DIFFICULTY        = "Hard",  -- locked to Extreme or Hard
+    DIFFICULTY        = "Hard",   -- locked to Extreme or Hard
     RAID_MODE         = "Kaneki",   -- game mode name of the Tree Hideout raid
     WRONG_EVENT_SECONDS = 12,       -- leave if the game is in another mode for this long
     ENTER_DELAY       = 8,          -- seconds to wait in the main game before entering
@@ -39,7 +39,6 @@ local RAID_PLACE = 134342669880221
 
 local running     = true
 local enabled     = true
-local status      = "Initializing..."
 local connections = {}
 local stats       = { runs = 0, wins = 0, losses = 0, debris = 0, dodges = 0, centipedes = 0, hurt = 0 }
 
@@ -49,7 +48,15 @@ local function connect(signal, fn)
     return c
 end
 
--- สร้าง UI แสดงผลทันทีตั้งแต่หน้าแรก (ตัด Status ออก เหลือแค่สถิติและโหมด)
+-- ฟังก์ชันหยุดการทำงานทั้งหมดแบบสมบูรณ์
+local function stopAll()
+    running = false
+    for _, c in ipairs(connections) do 
+        pcall(function() c:Disconnect() end) 
+    end
+end
+
+-- สร้าง UI แสดงผลทันทีตั้งแต่หน้าแรก
 local gui
 if CONFIG.SHOW_BUTTON then
     pcall(function()
@@ -77,9 +84,15 @@ if CONFIG.SHOW_BUTTON then
             button.TextColor3 = enabled and Color3.fromRGB(90, 255, 120) or Color3.fromRGB(255, 90, 90)
         end
         refresh()
+        
         button.Activated:Connect(function()
             enabled = not enabled
             refresh()
+            -- ถ้ากด OFF ให้สั่งหยุดการทำงานเบื้องหลังทั้งหมดทันที
+            if not enabled then
+                stopAll()
+                print("[CentipedeRaid] สคริปต์ถูกปิดการทำงานแล้ว (OFF)")
+            end
         end)
 
         local label = Instance.new("TextLabel")
@@ -100,7 +113,6 @@ if CONFIG.SHOW_BUTTON then
                 pcall(function()
                     currentMode = tostring(workspace:GetAttribute("ActiveGamemode"))
                 end)
-                -- แสดงเฉพาะสถิติและโหมดปัจจุบัน (ไม่เอา Status)
                 label.Text = string.format("Runs: %d/%d | Wins: %d | Centipedes: %d\nMode: %s",
                     stats.runs, CONFIG.MAX_RUNS, stats.wins, stats.centipedes, currentMode)
                 task.wait(0.4)
@@ -118,9 +130,9 @@ if game.PlaceId ~= RAID_PLACE then
     local TeleportService = game:GetService("TeleportService")
 
     if game.PlaceId ~= MAIN_PLACE then
-        status = "Wrong place, returning..."
         print("[CentipedeRaid] wrong place, going back to the main game")
         for _ = 1, 20 do
+            if not running then return end -- เช็คว่าถ้าโดนปิด จะไม่เทเลพอร์ตต่อ
             pcall(TeleportService.Teleport, TeleportService, MAIN_PLACE, LocalPlayer)
             task.wait(10)
         end
@@ -135,6 +147,7 @@ if game.PlaceId ~= RAID_PLACE then
     task.wait(CONFIG.ENTER_DELAY)
 
     for _ = 1, 60 do
+        if not running or not enabled then return end -- หยุดทำงานทันทีถ้ากดปิดสคริปต์
         pcall(party.InvokeServer, party, "Create", CONFIG.RAID_NAME, CONFIG.DIFFICULTY)
         task.wait(1)
         local ok2, started, why = pcall(party.InvokeServer, party, "Start")
@@ -408,17 +421,14 @@ end
 
 env.__CentipedeRaid = {
     stats = stats,
-    stop = function()
-        running = false
-        for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
-        if gui then pcall(function() gui:Destroy() end) end
-    end,
+    stop = stopAll,
 }
 
 task.spawn(function()
     local wrongSince
     while running do
         task.wait(2)
+        if not running or not enabled then break end
         local mode = workspace:GetAttribute("ActiveGamemode")
         if mode == CONFIG.RAID_MODE then
             wrongSince = nil
@@ -431,7 +441,7 @@ task.spawn(function()
                 local hum = char and char:FindFirstChildOfClass("Humanoid")
                 if hum then hum.Health = 0 end
                 task.wait(2)
-                env.__CentipedeRaid.stop()
+                stopAll()
                 for _ = 1, 20 do
                     pcall(TeleportService.Teleport, TeleportService, MAIN_PLACE, LocalPlayer)
                     task.wait(5)
