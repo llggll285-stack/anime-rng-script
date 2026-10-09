@@ -1,17 +1,17 @@
 -- Defeat Anime RNG | Tree Hideout raid - auto Centipede (Loop 10 times then Return)
 local CONFIG = {
-    ATTACK_INTERVAL   = 0.12,  -- seconds between sword hits
-    MOVE_SPEED        = 120,   -- studs per second when sliding to a Centipede
-    DODGE_SPEED       = 200,   -- studs per second when leaving a debris zone
-    STAND_DISTANCE    = 4,     -- how close to stand to the Centipede
-    DEBRIS_MARGIN     = 12,    -- extra studs to keep outside the debris circle (circle radius is 6)
-    HIT_OTHER_ENEMIES = true, -- true = also hit normal enemies while no Centipede is alive
-    AUTO_READY        = true,  -- press Ready in the raid lobby
-    READY_DELAY       = 6,     -- seconds to wait in the lobby before pressing Ready
-    AUTO_REPLAY       = true,  -- press Replay on the result screen
-    REPLAY_DELAY      = 3,     -- seconds to wait before pressing the result button
-    MAX_RUNS          = 7,    -- จำนวนรอบที่ต้องการให้เล่นซ้ำในห้องนี้ ก่อนจะกดกลับหน้าหลัก
-    SHOW_BUTTON       = true,  -- small ON/OFF button on screen
+    ATTACK_INTERVAL   = 0.12,   -- seconds between sword hits
+    MOVE_SPEED        = 120,    -- studs per second when sliding to a Centipede
+    DODGE_SPEED       = 200,    -- studs per second when leaving a debris zone
+    STAND_DISTANCE    = 4,      -- how close to stand to the Centipede
+    DEBRIS_MARGIN     = 12,     -- extra studs to keep outside the debris circle (circle radius is 6)
+    HIT_OTHER_ENEMIES = true,   -- true = also hit normal enemies while no Centipede is alive
+    AUTO_READY        = true,   -- press Ready in the raid lobby
+    READY_DELAY       = 6,      -- seconds to wait in the lobby before pressing Ready
+    AUTO_REPLAY       = true,   -- press Replay on the result screen
+    REPLAY_DELAY      = 3,      -- seconds to wait before pressing the result button
+    MAX_RUNS          = 7,      -- จำนวนรอบที่ต้องการให้เล่นซ้ำในห้องนี้ ก่อนจะกดกลับหน้าหลัก
+    SHOW_BUTTON       = true,   -- small ON/OFF button on screen
 
     AUTO_ENTER        = true,       -- in the main game: create the raid party and start it
     RAID_NAME         = "11th Ward", -- Tree Hideout
@@ -24,7 +24,7 @@ local CONFIG = {
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
-local Players           = game:GetService("Players")
+local Players             = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
 local LocalPlayer       = Players.LocalPlayer or Players.PlayerAdded:Wait()
@@ -37,6 +37,78 @@ end
 local MAIN_PLACE = 92606991708989
 local RAID_PLACE = 134342669880221
 
+local running     = true
+local enabled     = true
+local status      = "Initializing..."
+local connections = {}
+local stats       = { runs = 0, wins = 0, losses = 0, debris = 0, dodges = 0, centipedes = 0, hurt = 0 }
+
+local function connect(signal, fn)
+    local c = signal:Connect(fn)
+    table.insert(connections, c)
+    return c
+end
+
+-- สร้าง UI แสดงผลทันทีตั้งแต่หน้าแรก (ตัด Status ออก เหลือแค่สถิติและโหมด)
+local gui
+if CONFIG.SHOW_BUTTON then
+    pcall(function()
+        gui = Instance.new("ScreenGui")
+        gui.Name = "CentipedeRaidGui"
+        gui.ResetOnSpawn = false
+        local parent = (gethui and gethui()) or game:GetService("CoreGui")
+        local okParent = pcall(function() gui.Parent = parent end)
+        if not okParent or not gui.Parent then
+            gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+        end
+
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.fromOffset(210, 34)
+        button.Position = UDim2.new(0, 12, 0.5, 0)
+        button.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        button.BackgroundTransparency = 0.2
+        button.Font = Enum.Font.GothamBold
+        button.TextSize = 13
+        button.Parent = gui
+        Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
+
+        local function refresh()
+            button.Text = enabled and "Centipede: ON" or "Centipede: OFF"
+            button.TextColor3 = enabled and Color3.fromRGB(90, 255, 120) or Color3.fromRGB(255, 90, 90)
+        end
+        refresh()
+        button.Activated:Connect(function()
+            enabled = not enabled
+            refresh()
+        end)
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.fromOffset(260, 42)
+        label.Position = UDim2.new(0, 12, 0.5, 38)
+        label.BackgroundTransparency = 1
+        label.TextColor3 = Color3.new(1, 1, 1)
+        label.TextStrokeTransparency = 0.5
+        label.Font = Enum.Font.Gotham
+        label.TextSize = 12
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextYAlignment = Enum.TextYAlignment.Top
+        label.Parent = gui
+        
+        task.spawn(function()
+            while running do
+                local currentMode = "Lobby/Main"
+                pcall(function()
+                    currentMode = tostring(workspace:GetAttribute("ActiveGamemode"))
+                end)
+                -- แสดงเฉพาะสถิติและโหมดปัจจุบัน (ไม่เอา Status)
+                label.Text = string.format("Runs: %d/%d | Wins: %d | Centipedes: %d\nMode: %s",
+                    stats.runs, CONFIG.MAX_RUNS, stats.wins, stats.centipedes, currentMode)
+                task.wait(0.4)
+            end
+        end)
+    end)
+end
+
 local queueTeleport = queue_on_teleport or queueonteleport or (syn and syn.queue_on_teleport)
 if queueTeleport and CONFIG.SCRIPT_URL ~= "" then
     pcall(queueTeleport, string.format('loadstring(game:HttpGet("%s"))()', CONFIG.SCRIPT_URL))
@@ -46,6 +118,7 @@ if game.PlaceId ~= RAID_PLACE then
     local TeleportService = game:GetService("TeleportService")
 
     if game.PlaceId ~= MAIN_PLACE then
+        status = "Wrong place, returning..."
         print("[CentipedeRaid] wrong place, going back to the main game")
         for _ = 1, 20 do
             pcall(TeleportService.Teleport, TeleportService, MAIN_PLACE, LocalPlayer)
@@ -84,18 +157,6 @@ local WeaponsDatabase
 pcall(function()
     WeaponsDatabase = require(ReplicatedStorage:WaitForChild("Databases"):WaitForChild("WeaponsDatabase"))
 end)
-
-local running     = true
-local enabled     = true
-local status      = "Starting"
-local connections = {}
-local stats       = { runs = 0, wins = 0, losses = 0, debris = 0, dodges = 0, centipedes = 0, hurt = 0 }
-
-local function connect(signal, fn)
-    local c = signal:Connect(fn)
-    table.insert(connections, c)
-    return c
-end
 
 local function isWeapon(tool)
     if not tool:IsA("Tool") then return false end
@@ -227,10 +288,7 @@ local function step(dt)
     local char = LocalPlayer.Character
     local hum  = char and char:FindFirstChildOfClass("Humanoid")
     local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-    if not (hum and hrp) or hum.Health <= 0 then
-        status = "Waiting for character"
-        return
-    end
+    if not (hum and hrp) or hum.Health <= 0 then return end
 
     local here = hrp.Position
     local target, isCentipede = findTarget(here)
@@ -263,10 +321,7 @@ local function step(dt)
         hrp.AssemblyLinearVelocity = Vector3.zero
     end
 
-    if not target then
-        status = dodging and "Dodging debris" or "Waiting for Centipede"
-        return
-    end
+    if not target then return end
 
     ensureWeapon(char, hum)
     local now = os.clock()
@@ -274,18 +329,11 @@ local function step(dt)
         lastAttack = now
         AttackEvent:FireServer()
     end
-    local th = target:FindFirstChildOfClass("Humanoid")
-    status = string.format("%s%s (%d HP)", dodging and "Dodging + " or "Hitting ", target.Name, th and th.Health or 0)
 end
 
 connect(RunService.Heartbeat, function(dt)
-    if not running then return end
-    if not enabled then
-        status = "OFF"
-        return
-    end
-    local ok = pcall(step, dt)
-    if not ok then status = "Retrying" end
+    if not running or not enabled then return end
+    pcall(step, dt)
 end)
 
 local function watchCharacter(char)
@@ -342,7 +390,6 @@ if resultEvent and actionEvent then
         if not (enabled and CONFIG.AUTO_REPLAY) then return end
         task.delay(CONFIG.REPLAY_DELAY, function()
             if running and enabled then
-                -- เช็คว่าเล่นครบตามจำนวนรอบที่กำหนด (MAX_RUNS) หรือยัง
                 if stats.runs >= CONFIG.MAX_RUNS then
                     print("[CentipedeRaid] Completed " .. CONFIG.MAX_RUNS .. " runs, returning to main lobby...")
                     actionEvent:FireServer("Return")
@@ -352,7 +399,6 @@ if resultEvent and actionEvent then
                         end
                     end)
                 else
-                    -- ถ้ายังไม่ครบ ให้กด Replay เล่นซ้ำรอบถัดไปในห้องเดิม
                     actionEvent:FireServer("Replay")
                 end
             end
@@ -360,63 +406,8 @@ if resultEvent and actionEvent then
     end)
 end
 
-local gui
-if CONFIG.SHOW_BUTTON then
-    pcall(function()
-        gui = Instance.new("ScreenGui")
-        gui.Name = "CentipedeRaidGui"
-        gui.ResetOnSpawn = false
-        local parent = (gethui and gethui()) or game:GetService("CoreGui")
-        local okParent = pcall(function() gui.Parent = parent end)
-        if not okParent or not gui.Parent then
-            gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-        end
-
-        local button = Instance.new("TextButton")
-        button.Size = UDim2.fromOffset(210, 34)
-        button.Position = UDim2.new(0, 12, 0.5, 0)
-        button.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-        button.BackgroundTransparency = 0.2
-        button.Font = Enum.Font.GothamBold
-        button.TextSize = 13
-        button.Parent = gui
-        Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
-
-        local function refresh()
-            button.Text = enabled and "Centipede: ON" or "Centipede: OFF"
-            button.TextColor3 = enabled and Color3.fromRGB(90, 255, 120) or Color3.fromRGB(255, 90, 90)
-        end
-        refresh()
-        button.Activated:Connect(function()
-            enabled = not enabled
-            refresh()
-        end)
-
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.fromOffset(260, 52)
-        label.Position = UDim2.new(0, 12, 0.5, 38)
-        label.BackgroundTransparency = 1
-        label.TextColor3 = Color3.new(1, 1, 1)
-        label.TextStrokeTransparency = 0.5
-        label.Font = Enum.Font.Gotham
-        label.TextSize = 12
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.TextYAlignment = Enum.TextYAlignment.Top
-        label.Parent = gui
-        task.spawn(function()
-            while running do
-                label.Text = string.format("%s\nRuns: %d/%d | Wins %d | Centipedes %d\nMode: %s",
-                    status, stats.runs, CONFIG.MAX_RUNS, stats.wins, stats.centipedes,
-                    tostring(workspace:GetAttribute("ActiveGamemode")))
-                task.wait(0.4)
-            end
-        end)
-    end)
-end
-
 env.__CentipedeRaid = {
     stats = stats,
-    getStatus = function() return status end,
     stop = function()
         running = false
         for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
@@ -424,7 +415,6 @@ env.__CentipedeRaid = {
     end,
 }
 
--- ---------------------------------------------------------------- wrong event guard
 task.spawn(function()
     local wrongSince
     while running do
@@ -434,18 +424,13 @@ task.spawn(function()
             wrongSince = nil
         else
             wrongSince = wrongSince or os.clock()
-            status = "Wrong event (" .. tostring(mode) .. ")"
             if os.clock() - wrongSince >= CONFIG.WRONG_EVENT_SECONDS then
                 print("[CentipedeRaid] stuck in wrong mode, resetting character and going back...")
                 local TeleportService = game:GetService("TeleportService")
-                
                 local char = LocalPlayer.Character
                 local hum = char and char:FindFirstChildOfClass("Humanoid")
-                if hum then
-                    hum.Health = 0
-                end
+                if hum then hum.Health = 0 end
                 task.wait(2)
-                
                 env.__CentipedeRaid.stop()
                 for _ = 1, 20 do
                     pcall(TeleportService.Teleport, TeleportService, MAIN_PLACE, LocalPlayer)
