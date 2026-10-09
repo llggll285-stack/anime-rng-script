@@ -5,7 +5,7 @@ local CONFIG = {
     DODGE_SPEED       = 200,   -- studs per second when leaving a debris zone
     STAND_DISTANCE    = 4,     -- how close to stand to the Centipede
     DEBRIS_MARGIN     = 12,    -- extra studs to keep outside the debris circle (circle radius is 6)
-    HIT_OTHER_ENEMIES = true, -- true = also hit normal enemies while no Centipede is alive
+    HIT_OTHER_ENEMIES = false, -- true = also hit normal enemies while no Centipede is alive
     AUTO_READY        = true,  -- press Ready in the raid lobby
     READY_DELAY       = 6,     -- seconds to wait in the lobby before pressing Ready
     AUTO_REPLAY       = true,  -- press Replay on the result screen
