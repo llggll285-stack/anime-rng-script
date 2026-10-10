@@ -15,7 +15,7 @@ local CONFIG = {
 
     AUTO_ENTER        = true,       -- in the main game: create the raid party and start it
     RAID_NAME         = "11th Ward", -- Tree Hideout
-    DIFFICULTY        = "Hard",  -- locked to Extreme or Hard
+    DIFFICULTY        = "Extreme",  -- locked to Extreme or Hard
     RAID_MODE         = "Kaneki",   -- game mode name of the Tree Hideout raid
     WRONG_EVENT_SECONDS = 12,       -- leave if the game is in another mode for this long
     ENTER_DELAY       = 8,          -- seconds to wait in the main game before entering
