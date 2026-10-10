@@ -49,7 +49,7 @@ local function connect(signal, fn)
     return c
 end
 
--- สร้าง UI แสดงผลทันทีตั้งแต่หน้าแรก (ตัด Status ออก เหลือแค่สถิติและโหมด)
+-- สร้าง UI แสดงผลทันทีตั้งแต่หน้าแรก
 local gui
 if CONFIG.SHOW_BUTTON then
     pcall(function()
@@ -100,7 +100,6 @@ if CONFIG.SHOW_BUTTON then
                 pcall(function()
                     currentMode = tostring(workspace:GetAttribute("ActiveGamemode"))
                 end)
-                -- แสดงเฉพาะสถิติและโหมดปัจจุบัน (ไม่เอา Status)
                 label.Text = string.format("Runs: %d/%d | Wins: %d | Centipedes: %d\nMode: %s",
                     stats.runs, CONFIG.MAX_RUNS, stats.wins, stats.centipedes, currentMode)
                 task.wait(0.4)
@@ -129,12 +128,24 @@ if game.PlaceId ~= RAID_PLACE then
 
     if not CONFIG.AUTO_ENTER then return end
 
+    -- รอจนกว่าผู้ใช้จะกดเปิดใช้งาน (enabled == true) ถึงจะเริ่มทำงานในหน้าหลัก
+    task.spawn(function()
+        while running do
+            if enabled then break end
+            task.wait(0.5)
+        end
+    end)
+    while running and not enabled do
+        task.wait(0.2)
+    end
+
     local events = ReplicatedStorage:WaitForChild("RemoteEvents", 60)
     local party  = events and events:WaitForChild("RaidPartyRequestFunction", 30)
     if not party then return end
     task.wait(CONFIG.ENTER_DELAY)
 
     for _ = 1, 60 do
+        if not enabled then return end -- หยุดทันทีหากผู้ใช้กดปิดระหว่างรอ
         pcall(party.InvokeServer, party, "Create", CONFIG.RAID_NAME, CONFIG.DIFFICULTY)
         task.wait(1)
         local ok2, started, why = pcall(party.InvokeServer, party, "Start")
